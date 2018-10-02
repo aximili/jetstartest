@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Configuration;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -11,16 +12,18 @@ namespace JetStarTest
 {
     class Program
     {
-        // TODO These hardcoded const can come from a config file
-        static IField_2D _field = new TableTop(5, 5);
-        const bool _verbose = true;
+        static ConsoleAppConfig _config;
+        static IField _field;
 
         static void Main(string[] args)
         {
-            if(args.Length == 0)
+            ReadConfig();
+            InitialiseField();
+
+            if (args.Length == 0)
             {
                 Console.WriteLine("You can also feed commands from a file, eg.\n"+
-                                  $"  dotnet.exe JetStarTest.dll \"C:\\input.txt\"\n\n");
+                                 $"  dotnet.exe JetStarTest.dll \"C:\\input.txt\"\n\n");
 
                 StartInteractiveMode();
             }
@@ -30,57 +33,39 @@ namespace JetStarTest
             }
         }
 
-        static void ReadCommandsFromFile(string filename)
+        /// <summary>Reads appsettings.json into _config</summary>
+        private static void ReadConfig()
         {
-            if (!File.Exists(filename))
-            {
-                Console.WriteLine("File not found: " + filename);
-                // TODO may be log an error here
-                return;
-            }
+            var configuration = new ConfigurationBuilder()
+                                .SetBasePath(Directory.GetCurrentDirectory())
+                                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                                .Build();
 
-            IRobot_2D robot = new BasicRobot();
-
-            using (StreamReader file = new StreamReader(filename))
-            {
-                string input;
-                while ((input = file.ReadLine()) != null)
-                {
-                    try
-                    {
-                        if (_verbose)
-                            Console.WriteLine("\n" + input);
-
-                        ProcessUserInput(robot, input);
-
-                        if (_verbose && input.ToUpper() != "REPORT")
-                            Console.WriteLine("Robot status: " + GetRobotStatus(robot));
-                    }
-                    catch (SafeException ex)
-                    {
-                        Console.WriteLine(ex.Message);
-                    }
-                    catch (Exception ex)
-                    {
-                        if (ex is RobotException || ex is FieldException)
-                            Console.WriteLine(ex.Message);
-                        else
-                        {
-                            Console.WriteLine("Unexpected error - " + ex.Message);
-                            // TODO log error
-                        }
-                    }
-                }
-            }
-            
-
+            _config = configuration.GetSection("consoleAppConfig").Get<ConsoleAppConfig>();
         }
 
+        /// <summary>Creates an instance of the field and assigns it to _field based on _config</summary>
+        private static void InitialiseField()
+        {
+            switch (_config.Field.Type)
+            {
+                case "TableTop":
+                    _field = new TableTop(_config.Field.SizeX, _config.Field.SizeY);
+                    break;
+                default:
+                    throw new NotImplementedException($"Unhandled field type: {_config.Field.Type}");
+            }
+        }
+
+        /// <summary>
+        /// Starts the application using the first mode: Interactive.
+        /// It waits for user input then performs an action based on the input.
+        /// </summary>
         static void StartInteractiveMode()
         {
             Console.WriteLine("Starting interactive mode.\n");
 
-            IRobot_2D robot = new BasicRobot();
+            IRobot robot = new BasicRobot();
 
             while (true)
             {
@@ -92,14 +77,10 @@ namespace JetStarTest
 
                 try
                 {
-                    ProcessUserInput(robot, input);
+                    ProcessCommand(robot, input);
 
-                    if (_verbose && input.ToUpper() != "REPORT")
+                    if (_config.Verbose && input.ToUpper() != "REPORT")
                         Console.WriteLine("Robot status: " + GetRobotStatus(robot));
-                }
-                catch (SafeException ex)
-                {
-                    Console.WriteLine(ex.Message);
                 }
                 catch (Exception ex)
                 {
@@ -108,7 +89,7 @@ namespace JetStarTest
                     else
                     {
                         Console.WriteLine("Unexpected error - " + ex.Message);
-                        // TODO log error
+                        // TODO handle/log error
                     }
                 }
             }
@@ -116,21 +97,70 @@ namespace JetStarTest
             Console.WriteLine("\nThank you for playing.");
         }
 
-        private static void ProcessUserInput(IRobot_2D robot, string input)
+        /// <summary>
+        /// Starts the application using the second mode: Read commands from a file.
+        /// It reads the file line by line and executes them.
+        /// </summary>
+        static void ReadCommandsFromFile(string filename)
         {
-            if (input.ToUpper().StartsWith("PLACE"))
+            if (!File.Exists(filename))
             {
-                var match = Regex.Match(input, @"PLACE (\d), *(\d), *([a-z]+)", RegexOptions.IgnoreCase);
+                Console.WriteLine("File not found: " + filename);
+                // TODO may be log an error here
+                return;
+            }
+
+            IRobot robot = new BasicRobot();
+
+            using (StreamReader file = new StreamReader(filename))
+            {
+                string input;
+                while ((input = file.ReadLine()) != null)
+                {
+                    try
+                    {
+                        if (_config.Verbose)
+                            Console.WriteLine("\n" + input);
+
+                        ProcessCommand(robot, input);
+
+                        if (_config.Verbose && input.ToUpper() != "REPORT")
+                            Console.WriteLine("Robot status: " + GetRobotStatus(robot));
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex is RobotException || ex is FieldException)
+                            Console.WriteLine(ex.Message);
+                        else
+                        {
+                            Console.WriteLine("Unexpected error - " + ex.Message);
+                            // TODO handle/log error
+                        }
+                    }
+                }
+            }
+
+
+        }
+
+        /// <summary>Process a command (either from user input or from a line in a file)</summary>
+        /// <param name="robot">The robot to be commanded</param>
+        /// <param name="command">The command, eg. MOVE</param>
+        private static void ProcessCommand(IRobot robot, string command)
+        {
+            if (command.ToUpper().StartsWith("PLACE"))
+            {
+                var match = Regex.Match(command, @"PLACE (\d), *(\d), *([a-z]+)", RegexOptions.IgnoreCase);
                 if (!match.Success)
                     throw new SafeException("Invalid command. Try something like: PLACE 0, 0, NORTH");
 
-                var position = new Position_2D(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value));
-                var direction = Enum.Parse<Direction_2D>(match.Groups[3].Value, true);
+                var position = new Position(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value));
+                var direction = Enum.Parse<Direction>(match.Groups[3].Value, true);
                 robot.Place(_field, position, direction);
             }
             else
             {
-                switch (input.ToUpper())
+                switch (command.ToUpper())
                 {
                     case "MOVE":
                         robot.MoveForward();
@@ -150,7 +180,7 @@ namespace JetStarTest
             }
         }
 
-        private static string GetRobotStatus(IRobot_2D robot)
+        private static string GetRobotStatus(IRobot robot)
         {
             if (robot.Status.Field == null)
                 throw new SafeException("Please place the robot first using the PLACE command.");

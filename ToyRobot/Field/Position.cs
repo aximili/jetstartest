@@ -4,12 +4,15 @@ using System.Text;
 
 namespace ToyRobot.Field
 {
-    public class Position_2D
+    /// <summary>
+    /// A position (or coordinate) on a field
+    /// </summary>
+    public class Position
     { 
         public int X { get; set; }
         public int Y { get; set; }
 
-        public Position_2D(int x, int y)
+        public Position(int x, int y)
         {
             X = x;
             Y = y;

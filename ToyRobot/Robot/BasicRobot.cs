@@ -4,31 +4,39 @@ using System.Text;
 using ToyRobot.Exceptions;
 using ToyRobot.Field;
 using ToyRobot.Robot.Enum;
+using System.Linq;
 
 namespace ToyRobot.Robot
 {
-    public class BasicRobot: IRobot_2D
+    /// <summary>
+    /// This robot can only face N/E/S/W and can only move forward 1 tile at a time.
+    /// </summary>
+    public class BasicRobot: IRobot
     {
-        private IField_2D _field;
-        private Position_2D _position;
-        private Direction_2D _facing;
+        private static readonly Direction[] VALID_INITIAL_DIRECTIONS = new[] { Direction.North, Direction.East, Direction.South, Direction.West };
+        private const int ROTATE_STEP = 90;
+
+        private IField _field;
+        private Position _position;
+        private Direction _facing;
 
         public BasicRobot()
         {
             _field = null;
         }
 
-        public RobotStatus_2D Status
+        /// <summary>Gets the current status of the robots (field, position and facing direction)</summary>
+        public RobotStatus Status
         {
             get
             {
                 if (_field == null)
                 {
-                    return new RobotStatus_2D { Field = null };
+                    return new RobotStatus { Field = null };
                 }
                 else
                 {
-                    return new RobotStatus_2D {
+                    return new RobotStatus {
                         Field = _field,
                         Position = _position,
                         Facing = _facing
@@ -40,9 +48,10 @@ namespace ToyRobot.Robot
         /// <summary>Place the robot on a field. Throws an InvalidPositionException if the position on the field is invalid.</summary>
         /// <param name="field">The field to place the robot, eg. a TableTop</param>
         /// <param name="position">Where to put the robot in the field</param>
-        public void Place(IField_2D field, Position_2D position, Direction_2D facing)
+        public void Place(IField field, Position position, Direction facing)
         {
             field.ValidatePosition(position);
+            ValidateInitialDirection(facing);
 
             _field = field;
             _position = position;
@@ -55,20 +64,20 @@ namespace ToyRobot.Robot
             if (_field == null) // Robot has not been placed anywhere
                 throw new RobotUninitialisedException();
 
-            Position_2D futurePosition = new Position_2D(_position.X, _position.Y);
+            Position futurePosition = new Position(_position.X, _position.Y);
 
             switch (_facing)
             {
-                case Direction_2D.North:
+                case Direction.North:
                     futurePosition.Y = _position.Y + 1;
                     break;
-                case Direction_2D.East:
+                case Direction.East:
                     futurePosition.X = _position.X + 1;
                     break;
-                case Direction_2D.South:
+                case Direction.South:
                     futurePosition.Y = _position.Y - 1;
                     break;
-                case Direction_2D.West:
+                case Direction.West:
                     futurePosition.X = _position.X - 1;
                     break;
                 default:
@@ -88,10 +97,10 @@ namespace ToyRobot.Robot
             if (_field == null) // Robot has not been placed anywhere
                 throw new RobotUninitialisedException();
 
-            if (degreeRight % 90 != 0)
-                throw new RobotException($"Robot can only turn by a multiplication of 90 degree.");
+            if (degreeRight % ROTATE_STEP != 0)
+                throw new RobotException($"This Robot can only turn by a multiplication of {ROTATE_STEP} degree.");
 
-            _facing = (Direction_2D)(((int)_facing + degreeRight) % 360);
+            _facing = (Direction)(((int)_facing + degreeRight + 360) % 360);
         }
 
         /// <summary>Rotates the robot 90 degrees to the right</summary>
@@ -105,5 +114,12 @@ namespace ToyRobot.Robot
             Rotate(-90);
         }
 
+
+        /// <summary>Throws a RobotException if initial direction is invalid</summary>
+        private void ValidateInitialDirection(Direction facing)
+        {
+            if (!VALID_INITIAL_DIRECTIONS.Contains(facing))
+                throw new RobotException("The initial facing direction is not valid for this robot.");
+        }
     }
 }

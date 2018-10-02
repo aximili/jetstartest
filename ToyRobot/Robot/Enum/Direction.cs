@@ -4,7 +4,10 @@ using System.Text;
 
 namespace ToyRobot.Robot.Enum
 {
-    public enum Direction_2D
+    /// <summary>
+    /// Compass/horizontal direction
+    /// </summary>
+    public enum Direction
     {
         North = 0,
         East = 90,
